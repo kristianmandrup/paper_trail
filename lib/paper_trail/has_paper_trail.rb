@@ -59,17 +59,17 @@ module PaperTrail
 
         scope :subsequent, lambda { |version|
           v = version ? version + 1 : 0
-          where(:version => v + 1)
+          versions.where(:version => v + 1)
         }
 
         scope :preceding, lambda { |version|
           v = version ? version - 1 : 0
           v = v > 0 ? v : 1
-          where(:version => version - 1)
+          versions.where(:version => version - 1)
         }
 
         scope :after, lambda { |timestamp|
-          where(:created_at.gt => timestamp).asc(:created_at)
+          versions.where(:created_at.gt => timestamp).asc(:created_at)
         }
 
 
@@ -95,12 +95,12 @@ module PaperTrail
       # Returns true if this instance is the current, live one;
       # returns false if this instance came from a previous version.
       def live?
-        version.nil?
+        trail_version.nil?
       end
 
       # Returns who put the object into its current state.
       def originator
-        version_class.with_item_keys(self.class.name, id).last.try :whodunnit
+        self.class.with_item_keys(self.class.name, id).last.try :whodunnit
       end
 
       # Returns the object (not a Version) as it was at the given timestamp.
@@ -113,16 +113,15 @@ module PaperTrail
 
       # Returns the object (not a Version) as it was most recently.
       def previous_version
-        preceding_version = version ? version.previous : versions.last
+        preceding_version = trail_version ? previous_trail_version : versions.last
         preceding_version.try :reify
       end
 
       # Returns the object (not a Version) as it became next.
       def next_version 
-        puts "next version"
         # NOTE: if self (the item) was not reified from a version, i.e. it is the
         # "live" item, we return nil.  Perhaps we should return self instead?
-        subsequent_version = version ? version.next : nil
+        subsequent_version = trail_version ? next_trail_version : nil
         subsequent_version.reify if subsequent_version
       end
 
@@ -133,7 +132,6 @@ module PaperTrail
       end
 
       def record_create
-        puts "record create"
         if switched_on?
           event = 'create'
           whodunnit = PaperTrail.whodunnit
