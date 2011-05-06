@@ -8,6 +8,18 @@ PaperTrail lets you track changes to your models' data.  It's good for auditing 
 
 There's an excellent [Railscast on implementing Undo with Paper Trail](http://railscasts.com/episodes/255-undo-with-paper-trail).
 
+## Status
+
+I am using RSpec to spec the functionality. As per May 6th I am just experimenting but most of the functionality should be pretty close, as the whole versioning aspect is much easier in the Mongoid data model, using a JSON document model for storage. Please help out! 
+
+Now using a custom field :trail_version to track the paper trail. 
+The paper_trail functionality should be updated to use this attribute instead of the version attribute. See version_ext for my plan for how to access any previous version based on the :trail_version number. The next and previous should act relative to that number and then make a clone.
+
+  versions.target << previous.clone
+  versions.shift if version_max.present? && versions.length > version_max
+  self.version = (version || 1 ) + 1
+  @modifications["versions"] = [ nil, versions.as_document ] if @modifications
+
 ## Features
 
 * Stores every create, update and destroy.
@@ -29,10 +41,6 @@ There's an excellent [Railscast on implementing Undo with Paper Trail](http://ra
 * Supports custom version classes so different models' versions can have different behaviour.
 * Thoroughly tested.
 * Threadsafe.
-
-## Status
-
-I am using RSpec to spec the functionality. As per May 6th I am just experimenting but most of the functionality should be pretty close, as the whole versioning aspect is much easier in the Mongoid data model, using a JSON document model for storage. Please help out!  
 
 ## Rails Version
 

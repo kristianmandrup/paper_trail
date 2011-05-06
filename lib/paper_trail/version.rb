@@ -28,11 +28,11 @@ module PaperTrailing
   end
 
   def next
-    find_next_version
+    revise_next_trail_version
   end
 
   def previous
-    find_last_version
+    revise_previous_trail_version
   end
 
   def index

@@ -12,7 +12,12 @@ end
 require 'model/page'
 
 RSpec.configure do |config|
-  config.after :each do
+  config.before do
+    Mongoid.database.collections.each do |coll|
+      coll.remove
+    end      
+  end
+  config.after do
     Mongoid.database.collections.each do |coll|
       coll.remove
     end      

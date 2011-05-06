@@ -28,8 +28,9 @@ module PaperTrail
         send :include, PaperTrailing
 
         field :event, :type => String
+        field :trail_version, :type => Integer, :default => 1
 
-        validates_presence_of :event
+        # validates_presence_of :event
 
         # The version this instance was reified from.
         # Implicitly handled by Mongoid::Versioning by version field added to class
@@ -117,7 +118,8 @@ module PaperTrail
       end
 
       # Returns the object (not a Version) as it became next.
-      def next_version
+      def next_version 
+        puts "next version"
         # NOTE: if self (the item) was not reified from a version, i.e. it is the
         # "live" item, we return nil.  Perhaps we should return self instead?
         subsequent_version = version ? version.next : nil
@@ -131,6 +133,7 @@ module PaperTrail
       end
 
       def record_create
+        puts "record create"
         if switched_on?
           event = 'create'
           whodunnit = PaperTrail.whodunnit
