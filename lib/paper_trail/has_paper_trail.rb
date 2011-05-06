@@ -11,23 +11,33 @@ module PaperTrail
       # the model is available in the `versions` association.
       #
       # Options:
-      # :class_name   the name of a custom Version class.  This class should inherit from Version.
+      # :max_versions Maximum number of versions to be stored
       # :ignore       an array of attributes for which a new `Version` will not be created if only they change.
       # :only         inverse of `ignore` - a new `Version` will be created only for these attributes if supplied
-      # :meta         a hash of extra data to store.  You must add a column to the `versions` table for each key.
+
+      # :meta         a hash of extra data to store.
       #               Values are objects or procs (which are called with `self`, i.e. the model with the paper
       #               trail).  See `PaperTrail::Controller.info_for_paper_trail` for how to store data from
       #               the controller.
+
       def has_paper_trail(options = {})
         # Lazily include the instance methods so we don't clutter up
         # any more ActiveRecord models than we have to.
+        send :include, Mongoid::Versioning        
         send :include, InstanceMethods
+        send :include, PaperTrailing
+
+        field :event, :type => String
+
+        validates_presence_of :event
 
         # The version this instance was reified from.
-        attr_accessor :version
+        # Implicitly handled by Mongoid::Versioning by version field added to class
+        # attr_accessor :version
 
-        cattr_accessor :version_class_name
-        self.version_class_name = options[:class_name] || 'Version'
+        # Implicitly handled by Mongoid::Versioning through embedded relationship
+        # cattr_accessor :version_class_name
+        # self.version_class_name = options[:class_name] || 'Version'
 
         cattr_accessor :ignore
         self.ignore = ([options[:ignore]].flatten.compact || []).map &:to_s
@@ -41,7 +51,26 @@ module PaperTrail
         cattr_accessor :paper_trail_enabled_for_model
         self.paper_trail_enabled_for_model = true
 
-        has_many :versions, :class_name => version_class_name, :as => :item, :order => "created_at ASC, #{self.primary_key} ASC"
+        # Implicitly handled by Mongoid::Versioning through embedded relationship
+        # has_many :versions, :class_name => version_class_name, :as => :item, :order => "created_at ASC, #{self.primary_key} ASC"
+
+        max_versions(options[:max_versions]) if options[:max_versions]
+
+        scope :subsequent, lambda { |version|
+          v = version ? version + 1 : 0
+          where(:version => v + 1)
+        }
+
+        scope :preceding, lambda { |version|
+          v = version ? version - 1 : 0
+          v = v > 0 ? v : 1
+          where(:version => version - 1)
+        }
+
+        scope :after, lambda { |timestamp|
+          where(:created_at.gt => timestamp).asc(:created_at)
+        }
+
 
         after_create  :record_create
         before_update :record_update
@@ -98,69 +127,83 @@ module PaperTrail
       private
 
       def version_class
-        version_class_name.constantize
+        self.class
       end
 
       def record_create
         if switched_on?
-          versions.create merge_metadata(:event => 'create', :whodunnit => PaperTrail.whodunnit)
+          event = 'create'
+          whodunnit = PaperTrail.whodunnit
+          # versions.create merge_metadata(:event => 'create', :whodunnit => PaperTrail.whodunnit)
         end
       end
 
       def record_update
         if switched_on? && changed_notably?
-          versions.build merge_metadata(:event     => 'update',
-                                        :object    => object_to_string(item_before_change),
-                                        :whodunnit => PaperTrail.whodunnit)
+          event = 'update'
+          whodunnit = PaperTrail.whodunnit
+          # versions.build merge_metadata(:event     => 'update',
+          #                               :object    => object_to_string(item_before_change),
+          #                               :whodunnit => PaperTrail.whodunnit)
         end
       end
 
       def record_destroy
         if switched_on? and not new_record?
-          version_class.create merge_metadata(:item_id   => self.id,
-                                        :item_type => self.class.name,
-                                        :event     => 'destroy',
-                                        :object    => object_to_string(item_before_change),
-                                        :whodunnit => PaperTrail.whodunnit)
+          event     = 'destroy'          
+          whodunnit = PaperTrail.whodunnit
+
+          # version_class.create merge_metadata(:item_id   => self.id,
+          #                               :item_type => self.class.name,
+          #                               :event     => 'destroy',
+          #                               :object    => object_to_string(item_before_change),
+          #                               :whodunnit => PaperTrail.whodunnit)
         end
         versions.send :load_target
       end
 
-      def merge_metadata(data)
-        # First we merge the model-level metadata in `meta`.
-        meta.each do |k,v|
-          data[k] =
-            if v.respond_to?(:call)
-              v.call(self)
-            elsif v.is_a?(Symbol) && respond_to?(v)
-              send(v)
-            else
-              v
-            end
-        end
-        # Second we merge any extra data from the controller (if available).
-        data.merge(PaperTrail.controller_info || {})
-      end
+      # How does this apply with respect to Mongoid?
 
-      def item_before_change
-        self.clone.tap do |previous|
-          previous.id = id
-          changed_attributes.each { |attr, before| previous[attr] = before }
-        end
-      end
+      # def merge_metadata(data)
+      #   # First we merge the model-level metadata in `meta`.
+      #   meta.each do |k,v|
+      #     data[k] =
+      #       if v.respond_to?(:call)
+      #         v.call(self)
+      #       elsif v.is_a?(Symbol) && respond_to?(v)
+      #         send(v)
+      #       else
+      #         v
+      #       end
+      #   end
+      #   # Second we merge any extra data from the controller (if available).
+      #   data.merge(PaperTrail.controller_info || {})
+      # end
 
-      def object_to_string(object)
-        object.attributes.to_yaml
-      end
+      # This is auto-handled by Mongoid as it uses JSON as storage format!
+      # def item_before_change
+      #   self
+      # end
+
+      # def item_before_change
+      #   self.clone.tap do |previous|
+      #     previous.id = id
+      #     changed_attributes.each { |attr, before| previous[attr] = before }
+      #   end
+      # end
+
+      # def object_to_string(object)
+      #   object.attributes.to_yaml
+      # end
 
       def changed_notably?
         notably_changed.any?
       end
-
+      
       def notably_changed
         self.class.only.empty? ? changed_and_not_ignored : (changed_and_not_ignored & self.class.only)
       end
-
+      
       def changed_and_not_ignored
         changed - self.class.ignore
       end

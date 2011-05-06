@@ -7,7 +7,7 @@ Gem::Specification.new do |s|
   s.summary       = "Track changes to your models' data.  Good for auditing or versioning."
   s.description   = s.summary
   s.homepage      = 'http://github.com/airblade/paper_trail'
-  s.authors       = ['Andy Stewart']
+  s.authors       = ['Andy Stewart', 'Kristian Mandrup']
   s.email         = 'boss@airbladesoftware.com'
 
   s.files         = `git ls-files`.split("\n")
@@ -16,9 +16,9 @@ Gem::Specification.new do |s|
   s.require_paths = ['lib']
 
   s.add_dependency 'rails', '~> 3'
+  s.add_dependency 'mongoid', '~> 2'
 
   s.add_development_dependency 'shoulda',      '2.10.3'
-  s.add_development_dependency 'sqlite3-ruby', '~> 1.2'
   s.add_development_dependency 'capybara',     '>= 0.4.0'
   s.add_development_dependency 'turn'
 end

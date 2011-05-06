@@ -1,10 +1,13 @@
 require 'singleton'
-require 'yaml'
+
+# Mongoid uses JSON internally
+# require 'yaml'
 
 require 'paper_trail/config'
 require 'paper_trail/controller'
 require 'paper_trail/has_paper_trail'
 require 'paper_trail/version'
+require 'paper_trail/mongoid/version_ext'
 
 # PaperTrail's module methods can be called in both models and controllers.
 module PaperTrail
@@ -78,10 +81,10 @@ module PaperTrail
 end
 
 
-ActiveSupport.on_load(:active_record) do
+ActiveSupport.on_load(:mongoid) do
   include PaperTrail::Model
 end
 
-ActiveSupport.on_load(:action_controller) do
+ActiveSupport.on_load(:mongoid) do
   include PaperTrail::Controller
 end

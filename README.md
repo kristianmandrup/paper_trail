@@ -1,4 +1,6 @@
-# PaperTrail
+# PaperTrail for Mongoid
+
+See [Mongoid versioning rundown](http://neovintage.blogspot.com/2010/06/mongoid-versioning-run-down.html)
 
 PaperTrail lets you track changes to your models' data.  It's good for auditing or versioning.  You can see how a model looked at any stage in its lifecycle, revert it to any version, and even undelete it after it's been destroyed.
 
@@ -29,14 +31,14 @@ There's an excellent [Railscast on implementing Undo with Paper Trail](http://ra
 
 ## Rails Version
 
-Works on Rails 3 and Rails 2.3.  The Rails 3 code is on the `master` branch and tagged `v2.x`.  The Rails 2.3 code is on the `rails2` branch and tagged `v1.x`.  Please note I'm not adding new features to the Rails 2.3 codebase.
-
+Works on Rails 3 (Rails 2.3 not tested)
 
 ## API Summary
 
 When you declare `has_paper_trail` in your model, you get these methods:
 
-    class Widget < ActiveRecord::Base
+    class Widget
+      include Mongoid::Document
       has_paper_trail   # you can pass various options here
     end
 
