@@ -2,6 +2,8 @@
 
 See [Mongoid versioning rundown](http://neovintage.blogspot.com/2010/06/mongoid-versioning-run-down.html)
 
+Also see the file _mongoid_versioning.txt.rb_ to see the Mongoid versioning API used here.
+
 PaperTrail lets you track changes to your models' data.  It's good for auditing or versioning.  You can see how a model looked at any stage in its lifecycle, revert it to any version, and even undelete it after it's been destroyed.
 
 There's an excellent [Railscast on implementing Undo with Paper Trail](http://railscasts.com/episodes/255-undo-with-paper-trail).
@@ -28,6 +30,9 @@ There's an excellent [Railscast on implementing Undo with Paper Trail](http://ra
 * Thoroughly tested.
 * Threadsafe.
 
+## Status
+
+I am using RSpec to spec the functionality. As per May 6th I am just experimenting but most of the functionality should be pretty close, as the whole versioning aspect is much easier in the Mongoid data model, using a JSON document model for storage. Please help out!  
 
 ## Rails Version
 
@@ -108,7 +113,8 @@ In your controllers you can override these methods:
 
 PaperTrail is simple to use.  Just add 15 characters to a model to get a paper trail of every `create`, `update`, and `destroy`.
 
-    class Widget < ActiveRecord::Base
+    class Widget
+      include Mongoid::Document
       has_paper_trail
     end
 
@@ -173,7 +179,8 @@ PaperTrail stores the values in the Model Before column.  Most other auditing/ve
 
 You can ignore changes to certain attributes like this:
 
-    class Article < ActiveRecord::Base
+    class Article
+      include Mongoid::Document
       has_paper_trail :ignore => [:title, :rating]
     end
 
@@ -189,7 +196,8 @@ This means that changes to just the `title` or `rating` will not store another v
 
 Or, you can specify a list of all attributes you care about:
 
-    class Article < ActiveRecord::Base
+    class Article
+      include Mongoid::Document
       has_paper_trail :only => [:title]
     end
 
@@ -314,115 +322,19 @@ To find out who made a `version`'s object look that way, use `version.originator
 
 ## Custom Version Classes
 
-You can specify custom version subclasses with the `:class_name` option:
-
-    class Post < ActiveRecord::Base
-      has_paper_trail :class_name => 'PostVersion'
-    end
-
-    class PostVersion < Version
-      # custom behaviour, e.g:
-      set_table_name :post_versions
-    end
-
-This allows you to store each model's versions in a separate table, which is useful if you have a lot of versions being created.
-
-Alternatively you could store certain metadata for one type of version, and other metadata for other versions.
-
+Not needed when using Mongoid
 
 ## Associations
 
-I haven't yet found a good way to get PaperTrail to automatically restore associations when you reify a model.  See [here for a little more info](http://airbladesoftware.com/notes/undo-and-redo-with-papertrail).
-
-If you can think of a good way to achieve this, please let me know.
-
+Handled by Mongoid as everything is just a document
 
 ## Has-One Associations
 
-PaperTrail automatically restores `:has_one` associations as they were at (actually, 3 seconds before) the time.
-
-    class Treasure < ActiveRecord::Base
-      has_one :location
-    end
-
-    >> treasure.amount                  # 100
-    >> treasure.location.latitude       # 12.345
-
-    >> treasure.update_attributes :amount => 153
-    >> treasure.location.update_attributes :latitude => 54.321
-    
-    >> t = treasure.versions.last.reify
-    >> t.amount                         # 100
-    >> t.location.latitude              # 12.345
-
-The implementation is complicated by the edge case where the parent and child are updated in one go, e.g. in one web request or database transaction.  PaperTrail doesn't know about different models being updated "together", so you can't ask it definitively to get the child as it was before the joint parent-and-child update.
-
-The correct solution is to make PaperTrail aware of requests or transactions (c.f. [Efficiency's transaction ID middleware](http://github.com/efficiency20/ops_middleware/blob/master/lib/e20/ops/middleware/transaction_id_middleware.rb)).  In the meantime we work around the problem by finding the child as it was a few seconds before the parent was updated.  By default we go 3 seconds before but you can change this by passing the `:has_one` option to `reify`:
-
-    >> t = treasure.versions.last.reify(:has_one => 1)       # look back 1 second instead of 3
-
-If you are shuddering, take solace from knowing you can opt out of these shenanigans:
-
-    >> t = treasure.versions.last.reify(:has_one => false)   # I say no to "workarounds"!
-
-Opting out means your `:has_one` associated objects will be the live ones, not the ones the user saw at the time.  Since PaperTrail doesn't auto-restore `:has_many` associations (I can't get it to work) or `:belongs_to` (I ran out of time looking at `:has_many`), this at least makes your associations wrong consistently ;)
-
-
+Handled by Mongoid ?
 
 ## Has-Many-Through Associations
 
-PaperTrail can track most changes to the join table.  Specifically it can track all additions but it can only track removals which fire the `after_destroy` callback on the join table.  Here are some examples:
-
-Given these models:
-
-    class Book < ActiveRecord::Base
-      has_many :authorships, :dependent => :destroy
-      has_many :authors, :through => :authorships, :source => :person
-      has_paper_trail
-    end
-    
-    class Authorship < ActiveRecord::Base
-      belongs_to :book
-      belongs_to :person
-      has_paper_trail      # NOTE
-    end
-    
-    class Person < ActiveRecord::Base
-      has_many :authorships, :dependent => :destroy
-      has_many :books, :through => :authorships
-      has_paper_trail
-    end
-
-Then each of the following will store authorship versions:
-
-    >> @book.authors << @dostoyevsky
-    >> @book.authors.create :name => 'Tolstoy'
-    >> @book.authorships.last.destroy
-    >> @book.authorships.clear
-
-But none of these will:
-
-    >> @book.authors.delete @tolstoy
-    >> @book.author_ids = [@solzhenistyn.id, @dostoyevsky.id]
-    >> @book.authors = []
-
-Having said that, you can apparently get all these working (I haven't tested it myself) with this [monkey patch](http://stackoverflow.com/questions/2381033/how-to-create-a-full-audit-log-in-rails-for-every-table/2381411#2381411):
-
-    # In config/initializers/core_extensions.rb or lib/core_extensions.rb
-    ActiveRecord::Associations::HasManyThroughAssociation.class_eval do 
-      def delete_records(records)
-        klass = @reflection.through_reflection.klass
-        records.each do |associate|
-          klass.destroy_all(construct_join_attributes(associate))
-        end
-      end
-    end
-
-The difference is the call to `destroy_all` instead of `delete_all` in [the original](http://github.com/rails/rails/blob/master/activerecord/lib/active_record/associations/has_many_through_association.rb#L76-81).
-    
-
-There may be a way to store authorship versions, probably using association callbacks, no matter how the collection is manipulated but I haven't found it yet.  Let me know if you do.
-
+Handled by Mongoid ?
 
 ## Storing metadata
 
@@ -438,44 +350,11 @@ You can store arbitrary model-level metadata alongside each version like this:
       end
     end
 
-PaperTrail will call your proc with the current article and store the result in the `author_id` column of the `versions` table.  (Remember to add your metadata columns to the table.)
-
-Why would you do this?  In this example, `author_id` is an attribute of `Article` and PaperTrail will store it anyway in serialized (YAML) form in the `object` column of the `version` record.  But let's say you wanted to pull out all versions for a particular author; without the metadata you would have to deserialize (reify) each `version` object to see if belonged to the author in question.  Clearly this is inefficient.  Using the metadata you can find just those versions you want:
-
-    Version.all(:conditions => ['author_id = ?', author_id])
-
-Note you can pass a symbol as a value in the `meta` hash to signal a method to call.
-
-You can also store any information you like from your controller.  Just override the `info_for_paper_trail` method in your controller to return a hash whose keys correspond to columns in your `versions` table.  E.g.:
-
-    class ApplicationController
-      def info_for_paper_trail
-        { :ip => request.remote_ip, :user_agent => request.user_agent }
-      end
-    end
-
-Remember to add those extra columns to your `versions` table ;)
-
+Hmm.. In Mongo you can always add extra fields to the data stored for a record - flexible schema!
 
 ## Diffing Versions
 
-When you're storing every version of an object, as PaperTrail lets you do, you're almost certainly going to want to diff those versions against each other.  However I haven't built a diff method into PaperTrail because I think diffing is best left to dedicated libraries, and also it's hard to come up with a diff method to suit all the use cases.
-
-You might be surprised that PaperTrail doesn't use diffs internally anyway.  When I designed PaperTrail I wanted simplicity and robustness so I decided to make each version of an object self-contained.  A version stores all of its object's data, not a diff from the previous version.
-
-So instead here are some specialised diffing libraries which you can use on top of PaperTrail.
-
-For diffing two strings:
-
-* [htmldiff](http://github.com/myobie/htmldiff): expects but doesn't require HTML input and produces HTML output.  Works very well but slows down significantly on large (e.g. 5,000 word) inputs.
-* [differ](http://github.com/pvande/differ): expects plain text input and produces plain text/coloured/HTML/any output.  Can do character-wise, word-wise, line-wise, or arbitrary-boundary-string-wise diffs.  Works very well on non-HTML input.
-* [diff-lcs](http://github.com/halostatue/ruwiki/tree/master/diff-lcs/trunk): old-school, line-wise diffs.
-
-For diffing two ActiveRecord objects:
-
-* [Jeremy Weiskotten's PaperTrail fork](http://github.com/jeremyw/paper_trail/blob/master/lib/paper_trail/has_paper_trail.rb#L151-156): uses ActiveSupport's diff to return an array of hashes of the changes.
-* [activerecord-diff](http://github.com/tim/activerecord-diff): rather like ActiveRecord::Dirty but also allows you to specify which columns to compare.
-
+Just compare the JSON - done internally by Mongoid when doing == ?
 
 ## Turning PaperTrail Off/On
 
@@ -606,6 +485,7 @@ Many thanks to:
 * [Jonas Hoglund](https://github.com/jhoglund)
 * [Stefan Huber](https://github.com/MSNexploder)
 * [thinkcast](https://github.com/thinkcast)
+* [kristianmandrup](https://github.com/kristianmandrup)
 
 
 ## Inspirations
